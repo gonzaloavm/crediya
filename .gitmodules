@@ -1,0 +1,6 @@
+[submodule "modules/crediya-autenticacion"]
+	path = modulos/crediya-autenticacion
+	url = https://github.com/gonzaloavm/crediya-autenticacion.git
+[submodule "modules/crediya-solicitudes"]
+	path = modulos/crediya-solicitudes
+	url = https://github.com/gonzaloavm/crediya-solicitudes.git
