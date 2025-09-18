@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  # Base de datos para autenticación
+  mysql-autenticacion:
+    image: mysql:8.0
+    container_name: mysql-autenticacion
+    networks:
+      - app-network
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: autenticacion
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_auth_data:/var/lib/mysql
+      - ./database/autenticacion/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./database/autenticacion/data.sql:/docker-entrypoint-initdb.d/02-data.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Base de datos para solicitudes
+  mysql-solicitudes:
+    image: mysql:8.0
+    container_name: mysql-solicitudes
+    networks:
+      - app-network
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: solicitudes
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql_solicitudes_data:/var/lib/mysql
+      - ./database/solicitudes/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./database/solicitudes/data.sql:/docker-entrypoint-initdb.d/02-data.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  # Servicio de autenticación
+  autenticacion:
+    build:
+      context: ./modulos/crediya-autenticacion
+      dockerfile: deployment/Dockerfile
+    container_name: autenticacion-service
+    networks:
+      - app-network
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_R2DBC_URL: r2dbc:mysql://mysql-autenticacion:3306/autenticacion
+      SPRING_R2DBC_USERNAME: ${DB_USER}
+      SPRING_R2DBC_PASSWORD: ${DB_PASSWORD}
+      SERVER_PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql-autenticacion:
+        condition: service_healthy
+    restart: unless-stopped
+  
+  # Servicio de solicitudes
+  solicitudes:
+    build:
+      context: ./modulos/crediya-solicitudes
+      dockerfile: deployment/Dockerfile
+    container_name: solicitudes-service
+    networks:
+      - app-network
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_R2DBC_URL: r2dbc:mysql://mysql-solicitudes:3306/solicitudes
+      SPRING_R2DBC_USERNAME: ${DB_USER}
+      SPRING_R2DBC_PASSWORD: ${DB_PASSWORD}
+      SERVER_PORT: 8081
+      AUTENTICACION_SERVICE_URL: http://autenticacion:8080
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mysql-solicitudes
+      - autenticacion
+    restart: unless-stopped
+    
+volumes:
+  mysql_auth_data:
+  mysql_solicitudes_data:
+
+networks:
+  app-network:
+    driver: bridge
